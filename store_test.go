@@ -15,7 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/eventsource-pkg/dynamo"
-	"github.com/savaki/eventsource"
+	"github.com/eventsource-pkg/eventsource"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -42,6 +42,12 @@ type EntitySetFirst struct {
 type EntitySetLast struct {
 	eventsource.Model
 	Last string
+}
+
+func TestImplementsStore(t *testing.T) {
+	var v interface{} = &dynamo.Store{}
+	_, ok := v.(eventsource.Store)
+	assert.True(t, ok)
 }
 
 func TestIsKey(t *testing.T) {

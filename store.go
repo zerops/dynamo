@@ -15,8 +15,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/eventsource-pkg/eventsource"
 	"github.com/pkg/errors"
-	"github.com/savaki/eventsource"
 )
 
 const (
