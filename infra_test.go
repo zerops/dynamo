@@ -3,8 +3,8 @@ package dynamo_test
 import (
 	"testing"
 
-	"github.com/eventsource-pkg/dynamo"
 	"github.com/stretchr/testify/assert"
+	"github.com/zerops/dynamo"
 )
 
 func TestMakeCreateTableInput(t *testing.T) {

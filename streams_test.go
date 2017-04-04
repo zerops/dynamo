@@ -5,8 +5,8 @@ import (
 
 	apex "github.com/apex/go-apex/dynamo"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/eventsource-pkg/dynamo"
 	"github.com/stretchr/testify/assert"
+	"github.com/zerops/dynamo"
 )
 
 func TestRawEvents(t *testing.T) {

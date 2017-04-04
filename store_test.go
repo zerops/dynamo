@@ -14,9 +14,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/eventsource-pkg/dynamo"
-	"github.com/eventsource-pkg/eventsource"
 	"github.com/stretchr/testify/assert"
+	"github.com/zerops/dynamo"
+	"github.com/zerops/eventsource"
 )
 
 var api *dynamodb.DynamoDB

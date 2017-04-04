@@ -6,8 +6,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/eventsource-pkg/dynamo"
-	"github.com/eventsource-pkg/eventsource"
+	"github.com/zerops/dynamo"
+	"github.com/zerops/eventsource"
 )
 
 // UserCreated defines a user creation event
