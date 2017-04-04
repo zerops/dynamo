@@ -77,15 +77,14 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	repo := eventsource.New(&User{}, eventsource.WithStore(store))
-	err = repo.Bind(
-		UserCreated{},
-		UserNameSet{},
-		UserEmailSet{},
+	repo := eventsource.New(&User{},
+		eventsource.WithStore(store),
+		eventsource.WithSerializer(eventsource.NewJSONSerializer(
+			UserCreated{},
+			UserNameSet{},
+			UserEmailSet{},
+		)),
 	)
-	if err != nil {
-		log.Fatalln(err)
-	}
 
 	id := "123"
 	setNameEvent := &UserNameSet{

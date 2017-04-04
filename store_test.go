@@ -193,7 +193,7 @@ func TestSave(t *testing.T) {
 				Last: "last",
 			}
 
-			serializer := eventsource.JSONSerializer()
+			serializer := eventsource.NewJSONSerializer()
 			serializer.Bind(e1, e2)
 
 			r1, err := serializer.Serialize(e1)
@@ -242,7 +242,7 @@ func TestStore_Fetch(t *testing.T) {
 		Last: "last",
 	}
 
-	serializer := eventsource.JSONSerializer()
+	serializer := eventsource.NewJSONSerializer()
 	serializer.Bind(e1, e2)
 
 	r1, err := serializer.Serialize(e1)
