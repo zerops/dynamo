@@ -167,11 +167,11 @@ func TestSave(t *testing.T) {
 		},
 		"split": {
 			EventsPerItem: 2,
-			Partitions:    []string{"0", "1"},
+			Partitions:    []string{"0"},
 		},
 		"single": {
 			EventsPerItem: 1,
-			Partitions:    []string{"1", "2"},
+			Partitions:    []string{"1"},
 		},
 	}
 

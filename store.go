@@ -35,6 +35,7 @@ const (
 
 var (
 	errInvalidKey = errors.New("invalid event key")
+	errNoRecords  = errors.New("no records to save")
 )
 
 func IsKey(key string) bool {
@@ -56,25 +57,27 @@ type Store struct {
 
 // Save implements the eventsource.Store interface
 func (s *Store) Save(ctx context.Context, aggregateID string, records ...eventsource.Record) error {
-	inputs, err := makeUpdateItemInput(s.tableName, s.hashKey, s.rangeKey, s.eventsPerItem, aggregateID, records...)
+	if len(records) == 0 {
+		return nil
+	}
+
+	input, err := makeUpdateItemInput(s.tableName, s.hashKey, s.rangeKey, s.eventsPerItem, aggregateID, records...)
 	if err != nil {
 		return err
 	}
 
-	for _, input := range inputs {
-		if s.debug {
-			encoder := json.NewEncoder(s.writer)
-			encoder.SetIndent("", "  ")
-			encoder.Encode(input)
-		}
+	if s.debug {
+		encoder := json.NewEncoder(s.writer)
+		encoder.SetIndent("", "  ")
+		encoder.Encode(input)
+	}
 
-		_, err := s.api.UpdateItem(input)
-		if err != nil {
-			if v, ok := err.(awserr.Error); ok {
-				return errors.Wrapf(err, "Save failed. %v [%v]", v.Message(), v.Code())
-			}
-			return err
+	_, err = s.api.UpdateItem(input)
+	if err != nil {
+		if v, ok := err.(awserr.Error); ok {
+			return errors.Wrapf(err, "Save failed. %v [%v]", v.Message(), v.Code())
 		}
+		return err
 	}
 
 	return nil
@@ -179,78 +182,61 @@ func New(tableName string, opts ...Option) (*Store, error) {
 	return store, nil
 }
 
-func partition(eventsPerItem int, records ...eventsource.Record) (map[int][]eventsource.Record, error) {
-	partitions := map[int][]eventsource.Record{}
+func makeUpdateItemInput(tableName, hashKey, rangeKey string, eventsPerItem int, aggregateID string, records ...eventsource.Record) (*dynamodb.UpdateItemInput, error) {
+	sort.Slice(records, func(i, j int) bool {
+		return records[i].Version < records[j].Version
+	})
 
-	for _, record := range records {
-		id := selectPartition(record.Version, eventsPerItem)
-		p, ok := partitions[id]
-		if !ok {
-			p = []eventsource.Record{}
-		}
-
-		partitions[id] = append(p, record)
+	if len(records) == 0 {
+		return nil, errNoRecords
 	}
 
-	return partitions, nil
-}
+	partitionID := records[0].Version / eventsPerItem
 
-func makeUpdateItemInput(tableName, hashKey, rangeKey string, eventsPerItem int, aggregateID string, records ...eventsource.Record) ([]*dynamodb.UpdateItemInput, error) {
-	eventCount := len(records)
-	partitions, err := partition(eventsPerItem, records...)
-	if err != nil {
-		return nil, err
+	input := &dynamodb.UpdateItemInput{
+		TableName: aws.String(tableName),
+		Key: map[string]*dynamodb.AttributeValue{
+			hashKey:  {S: aws.String(aggregateID)},
+			rangeKey: {N: aws.String(strconv.Itoa(partitionID))},
+		},
+		ExpressionAttributeNames: map[string]*string{
+			"#revision": aws.String("revision"),
+		},
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":one": {N: aws.String("1")},
+		},
 	}
 
-	inputs := make([]*dynamodb.UpdateItemInput, 0, eventCount)
-	for partitionID, partition := range partitions {
-		input := &dynamodb.UpdateItemInput{
-			TableName: aws.String(tableName),
-			Key: map[string]*dynamodb.AttributeValue{
-				hashKey:  {S: aws.String(aggregateID)},
-				rangeKey: {N: aws.String(strconv.Itoa(partitionID))},
-			},
-			ExpressionAttributeNames: map[string]*string{
-				"#revision": aws.String("revision"),
-			},
-			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-				":one": {N: aws.String("1")},
-			},
+	// Add each element within the partition to the UpdateItemInput
+
+	condExpr := &bytes.Buffer{}
+	updateExpr := &bytes.Buffer{}
+	io.WriteString(updateExpr, "ADD #revision :one SET ")
+
+	for index, record := range records {
+		version := strconv.Itoa(record.Version)
+		at := strconv.FormatInt(record.At.Int64(), atBase)
+
+		// Each event is store as two entries, an event entries and an event type entry.
+
+		key := prefix + version + ":" + at
+		nameRef := "#" + prefix + version
+		valueRef := ":" + prefix + version
+
+		if index > 0 {
+			io.WriteString(condExpr, " AND ")
+			io.WriteString(updateExpr, ", ")
 		}
-
-		// Add each element within the partition to the UpdateItemInput
-
-		condExpr := &bytes.Buffer{}
-		updateExpr := &bytes.Buffer{}
-		io.WriteString(updateExpr, "ADD #revision :one SET ")
-
-		for index, record := range partition {
-			version := strconv.Itoa(record.Version)
-			at := strconv.FormatInt(record.At.Int64(), atBase)
-
-			// Each event is store as two entries, an event entries and an event type entry.
-
-			key := prefix + version + ":" + at
-			nameRef := "#" + prefix + version
-			valueRef := ":" + prefix + version
-
-			if index > 0 {
-				io.WriteString(condExpr, " AND ")
-				io.WriteString(updateExpr, ", ")
-			}
-			fmt.Fprintf(condExpr, "attribute_not_exists(%v)", nameRef)
-			fmt.Fprintf(updateExpr, "%v = %v", nameRef, valueRef)
-			input.ExpressionAttributeNames[nameRef] = aws.String(key)
-			input.ExpressionAttributeValues[valueRef] = &dynamodb.AttributeValue{B: record.Data}
-		}
-
-		input.ConditionExpression = aws.String(condExpr.String())
-		input.UpdateExpression = aws.String(updateExpr.String())
-
-		inputs = append(inputs, input)
+		fmt.Fprintf(condExpr, "attribute_not_exists(%v)", nameRef)
+		fmt.Fprintf(updateExpr, "%v = %v", nameRef, valueRef)
+		input.ExpressionAttributeNames[nameRef] = aws.String(key)
+		input.ExpressionAttributeValues[valueRef] = &dynamodb.AttributeValue{B: record.Data}
 	}
 
-	return inputs, nil
+	input.ConditionExpression = aws.String(condExpr.String())
+	input.UpdateExpression = aws.String(updateExpr.String())
+
+	return input, nil
 }
 
 // makeQueryInput
